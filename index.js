@@ -312,6 +312,111 @@ program
         }
     });
 
+program
+    .command('db:count')
+    .description('Show row counts for all tables')
+    .option('--table <name>', 'Count rows for specific table only')
+    .action(async (options) => {
+        try {
+            if (options.table) {
+                // Count specific table
+                const result = await dbManager.query(`SELECT COUNT(*) as count FROM \`${options.table}\``);
+                console.log(chalk.green(`\n📊 Table: ${options.table}`));
+                console.log(`Rows: ${result.rows[0].count}`);
+            } else {
+                // Count all tables
+                const tablesResult = await dbManager.query(`
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = ? 
+                    ORDER BY table_name
+                `, [process.env.DB_NAME]);
+                
+                console.log(chalk.green('\n📊 Row counts for all tables:'));
+                console.log(chalk.gray('─'.repeat(50)));
+                
+                let totalRows = 0;
+                for (const table of tablesResult.rows) {
+                    try {
+                        const countResult = await dbManager.query(`SELECT COUNT(*) as count FROM \`${table.table_name}\``);
+                        const count = countResult.rows[0].count;
+                        totalRows += parseInt(count);
+                        
+                        const displayCount = count.toLocaleString();
+                        console.log(`${table.table_name.padEnd(35)} ${displayCount.padStart(12)}`);
+                    } catch (error) {
+                        console.log(`${table.table_name.padEnd(35)} ${chalk.red('Error')}`);
+                    }
+                }
+                
+                console.log(chalk.gray('─'.repeat(50)));
+                console.log(chalk.cyan(`Total rows: ${totalRows.toLocaleString()}`));
+            }
+        } catch (error) {
+            console.error(chalk.red(`Failed to get row counts: ${error.message}`));
+            process.exit(1);
+        } finally {
+            await dbManager.close();
+        }
+    });
+
+program
+    .command('db:sample')
+    .description('Show sample data from tables')
+    .argument('<table>', 'Table name to sample')
+    .option('--limit <number>', 'Number of sample rows (default: 5)', '5')
+    .action(async (tableName, options) => {
+        try {
+            const limit = parseInt(options.limit);
+            const result = await dbManager.query(`SELECT * FROM \`${tableName}\` LIMIT ${limit}`);
+            
+            if (result.rows.length > 0) {
+                console.log(chalk.green(`\n📋 Sample data from ${tableName} (${result.rows.length} rows):`));
+                console.table(result.rows);
+            } else {
+                console.log(chalk.yellow(`Table ${tableName} is empty.`));
+            }
+        } catch (error) {
+            console.error(chalk.red(`Failed to sample table: ${error.message}`));
+            process.exit(1);
+        } finally {
+            await dbManager.close();
+        }
+    });
+
+program
+    .command('db:schema')
+    .description('Show schema information for a table')
+    .argument('<table>', 'Table name')
+    .action(async (tableName) => {
+        try {
+            const result = await dbManager.query(`
+                SELECT 
+                    COLUMN_NAME,
+                    DATA_TYPE,
+                    IS_NULLABLE,
+                    COLUMN_DEFAULT,
+                    COLUMN_KEY,
+                    EXTRA
+                FROM information_schema.COLUMNS 
+                WHERE table_schema = ? AND table_name = ?
+                ORDER BY ORDINAL_POSITION
+            `, [process.env.DB_NAME, tableName]);
+            
+            if (result.rows.length > 0) {
+                console.log(chalk.green(`\n🗂️  Schema for table: ${tableName}`));
+                console.table(result.rows);
+            } else {
+                console.log(chalk.yellow(`Table ${tableName} not found.`));
+            }
+        } catch (error) {
+            console.error(chalk.red(`Failed to get schema: ${error.message}`));
+            process.exit(1);
+        } finally {
+            await dbManager.close();
+        }
+    });
+
 // Add some helpful examples
 program.on('--help', () => {
     console.log('');
@@ -327,7 +432,11 @@ program.on('--help', () => {
     console.log('  $ node index.js db:create');
     console.log('  $ node index.js db:load');
     console.log('  $ node index.js db:info');
-    console.log('  $ node index.js db:query "SELECT * FROM users"');
+    console.log('  $ node index.js db:count');
+    console.log('  $ node index.js db:count --table AbpUsers');
+    console.log('  $ node index.js db:sample AbpUsers --limit 10');
+    console.log('  $ node index.js db:schema AbpUsers');
+    console.log('  $ node index.js db:query "SELECT * FROM AbpUsers WHERE EmailAddress LIKE \'%admin%\'"');
     console.log('');
     console.log('  Note: Configure your database credentials in the .env file');
 });

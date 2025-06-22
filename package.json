@@ -9,7 +9,8 @@
     "db:test": "node index.js db:test",
     "db:create": "node index.js db:create",
     "db:load": "node index.js db:load",
-    "db:info": "node index.js db:info"
+    "db:info": "node index.js db:info",
+    "db:count": "node index.js db:count"
   },
   "keywords": [
     "sql",

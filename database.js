@@ -1,6 +1,8 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 const fs = require('fs').promises;
+const { createReadStream } = require('fs');
+const { createInterface } = require('readline');
 const path = require('path');
 const chalk = require('chalk');
 
@@ -16,7 +18,8 @@ class DatabaseManager {
             database: process.env.DB_NAME,
             connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
             timeout: parseInt(process.env.DB_TIMEOUT) || 60000,
-            multipleStatements: true
+            multipleStatements: true,
+            maxAllowedPacket: 1000000000 // 1GB for large inserts
         };
     }
 
@@ -86,10 +89,117 @@ class DatabaseManager {
     }
 
     /**
-     * Execute SQL file
+     * Execute very large SQL files using streaming
+     */
+    async executeLargeSQLFile(filePath) {
+        try {
+            console.log(chalk.blue(`📁 Processing large SQL file: ${filePath}`));
+            
+            // Check if file exists
+            const fileExists = await fs.access(filePath).then(() => true).catch(() => false);
+            if (!fileExists) {
+                throw new Error(`SQL file not found: ${filePath}`);
+            }
+
+            // Get file stats
+            const stats = await fs.stat(filePath);
+            const fileSizeInMB = stats.size / (1024 * 1024);
+            console.log(chalk.blue(`📊 SQL file size: ${fileSizeInMB.toFixed(2)} MB`));
+
+            // Connect to database
+            const connection = await this.connect();
+
+            let executedCount = 0;
+            let errorCount = 0;
+            let currentStatement = '';
+            let lineCount = 0;
+            
+            // Create readline interface for streaming
+            const fileStream = createReadStream(filePath, { encoding: 'utf8' });
+            const rl = createInterface({
+                input: fileStream,
+                crlfDelay: Infinity
+            });
+
+            console.log(chalk.blue('🔄 Starting to process SQL statements...'));
+
+            // Process file line by line
+            for await (const line of rl) {
+                lineCount++;
+                
+                // Skip empty lines and comments
+                const trimmedLine = line.trim();
+                if (!trimmedLine || trimmedLine.startsWith('--') || trimmedLine.startsWith('/*')) {
+                    continue;
+                }
+
+                // Add line to current statement
+                currentStatement += line + '\n';
+
+                // Check if statement is complete (ends with semicolon)
+                if (trimmedLine.endsWith(';')) {
+                    try {
+                        // Remove the trailing semicolon and execute
+                        const statement = currentStatement.trim();
+                        if (statement.length > 1) {
+                            await connection.execute(statement);
+                            executedCount++;
+                            
+                            // Show progress every 100 statements
+                            if (executedCount % 100 === 0) {
+                                console.log(chalk.yellow(`⏳ Executed ${executedCount} statements... (Line ${lineCount})`));
+                            }
+                        }
+                    } catch (error) {
+                        errorCount++;
+                        console.error(chalk.red(`✗ Error at line ${lineCount}:`), error.message.substring(0, 100));
+                        
+                        // Log problematic statement preview
+                        const preview = currentStatement.substring(0, 200) + (currentStatement.length > 200 ? '...' : '');
+                        console.error(chalk.gray(`Statement preview: ${preview}`));
+                    }
+                    
+                    // Reset for next statement
+                    currentStatement = '';
+                }
+            }
+
+            console.log(chalk.green(`✓ Large SQL file processing completed:`));
+            console.log(chalk.green(`  - Total lines processed: ${lineCount}`));
+            console.log(chalk.green(`  - Successfully executed: ${executedCount} statements`));
+            if (errorCount > 0) {
+                console.log(chalk.yellow(`  - Errors encountered: ${errorCount} statements`));
+            }
+
+            return {
+                success: true,
+                executedCount,
+                errorCount,
+                totalLines: lineCount
+            };
+
+        } catch (error) {
+            console.error(chalk.red('✗ Failed to execute large SQL file:'), error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Execute SQL file - automatically chooses method based on file size
      */
     async executeSQLFile(filePath) {
         try {
+            // Check file size first
+            const stats = await fs.stat(filePath);
+            const fileSizeInMB = stats.size / (1024 * 1024);
+            
+            // Use streaming for files larger than 100MB
+            if (fileSizeInMB > 100) {
+                console.log(chalk.yellow(`⚠️  Large file detected (${fileSizeInMB.toFixed(2)}MB). Using streaming mode...`));
+                return await this.executeLargeSQLFile(filePath);
+            }
+            
+            // Original method for smaller files
             console.log(chalk.blue(`📁 Reading SQL file: ${filePath}`));
             
             // Check if file exists
