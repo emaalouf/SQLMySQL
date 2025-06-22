@@ -5,13 +5,24 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:test": "node index.js db:test",
+    "db:create": "node index.js db:create",
+    "db:load": "node index.js db:load",
+    "db:info": "node index.js db:info"
   },
-  "keywords": ["sql", "mysql", "converter", "database"],
+  "keywords": [
+    "sql",
+    "mysql",
+    "converter",
+    "database"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "chalk": "^4.1.2",
     "commander": "^11.1.0",
-    "chalk": "^4.1.2"
+    "dotenv": "^16.5.0",
+    "mysql2": "^3.14.1"
   }
 }
