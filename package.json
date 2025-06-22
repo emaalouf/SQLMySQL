@@ -1,12 +1,17 @@
 {
-  "name": "sqlmysql",
+  "name": "sql-to-mysql-converter",
   "version": "1.0.0",
+  "description": "Convert SQL Server queries to MySQL format",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["sql", "mysql", "converter", "database"],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "dependencies": {
+    "commander": "^11.1.0",
+    "chalk": "^4.1.2"
+  }
 }
